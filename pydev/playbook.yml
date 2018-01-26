@@ -1,0 +1,165 @@
+---
+- hosts: all
+
+  vars_files:
+  - "vars/common.yml"
+
+  vars:
+    # USER VARIABLES
+    ################################################
+    git_user: Vyom Kumar
+    git_email: vyomkumar@example.com
+    git_repo: git@github.com:vyomkumar/vagrant.git
+    ################################################
+    localuser: vagrant
+    homedir: /home/{{ localuser }}
+    py2dir: "{{ homedir }}/python2"
+    py3dir: "{{ homedir }}/python3"
+    py2vedir: "{{ py2dir }}/py2"
+    py3vedir: "{{ py3dir }}/py3"
+
+  tasks:
+  - name: Install packages - OS
+    package:
+      name: "{{ item }}"
+      state: present
+    with_items:
+    - "{{ Packages['Python3'][ansible_distribution] }}"
+    - "{{ Packages['Python3_pip'][ansible_distribution] }}"
+    - "{{ Packages['Python3_virtualenv'][ansible_distribution] }}"
+    - "{{ Packages['Python2_pip'][ansible_distribution] }}"
+    - "{{ Packages['Perl-Digest-SHA'][ansible_distribution] }}"
+    - vim
+    - jq
+    - tree
+    - git
+    become: yes
+
+  - name: Install packages - system Python
+    pip:
+      name: "{{ item }}"
+      state: present
+    with_items:
+    - autoenv
+    - virtualenv
+    become: yes
+
+  - name: Create directories - Python 2, Python 3
+  # Necessary to be explicit for correct permissions
+    file:
+      path: "{{ item }}"
+      state: directory
+    with_items:
+    - "{{ py2dir }}"
+    - "{{ py3dir }}"
+
+  - name: Install packages - Python 2 virtualenv
+    pip:
+      name: "{{ item }}"
+      state: present
+      extra_args: --upgrade
+      virtualenv: "{{ py2vedir }}"
+      virtualenv_command: virtualenv
+    with_items:
+    - pip
+    - ansible
+    become: yes
+
+  - name: Install packages - Python 3 virtualenv
+    pip:
+      name: "{{ item }}"
+      state: present
+      extra_args: --upgrade
+      virtualenv: "{{ py3vedir }}"
+      virtualenv_command: /usr/bin/python3 -m venv
+    with_items:
+    - pip
+    - ansible
+    - selenium
+    become: yes
+
+  - name: Python 2,3 virtualenvs - Upgrade pip
+    pip:
+      name: pip
+      extra_args: --upgrade
+      virtualenv: "{{ item.dir }}"
+      virtualenv_command: "{{ item.command }}"
+    with_items:
+    - dir: "{{ py2vedir }}"
+      command: virtualenv
+    - dir: "{{ py3vedir }}"
+      command: /usr/bin/python3 -m venv
+    become: yes
+
+  - name: Python 2,3 virtualenvs - Enable columns in pip list output
+    ini_file:
+      dest: "{{ item }}"
+      section: list
+      option: --format
+      value: columns
+    with_items:
+    - "{{ py2vedir }}/pip.conf"
+    - "{{ py3vedir }}/pip.conf"
+    become: yes
+
+  - name: Python 2 and 3 virtual environments - .env
+    copy:
+      dest: "{{ item.dest }}"
+      content: "{{ item.content }}"
+    with_items:
+    - dest: "/{{ py2dir }}/.env"
+      content: "source {{ py2vedir }}/bin/activate"
+    - dest: "/{{ py3dir }}/.env"
+      content: "source {{ py3vedir }}/bin/activate"
+    - dest: "/{{ homedir }}/.env"
+      content: |
+        if [ -n "$VIRTUAL_ENV" ] ; then
+            deactivate
+        fi
+
+  - name: Global git config
+    git_config:
+      scope: global
+      name: "{{ item.key }}"
+      value: "{{ item.value }}"
+    with_items:
+    - key: user.name
+      value: "{{ git_user }}"
+    - key: user.email
+      value: "{{ git_email }}"
+    - key: format.pretty
+      value: format:%C(yellow)%h %C(cyan)%>(22,trunc)%cr %C(green)%<(15,trunc)%aN %C(reset)%s %C(red)%d
+
+  - name: Download Git prompt customization script
+    get_url:
+      url: https://raw.githubusercontent.com/git/git/master/contrib/completion/git-prompt.sh
+      dest: "{{ homedir }}/.git-prompt.sh"
+      mode: 0755
+
+  - name: Configure Bash profile
+    blockinfile:
+      path: "{{ homedir }}/.bash_profile"
+      create: yes
+      insertafter: EOF
+      block: |
+        GIT_PS1_SHOWDIRTYSTATE=1
+        GIT_PS1_SHOWSTASHSTATE=1
+        GIT_PS1_SHOWUNTRACKEDFILES=1
+        GIT_PS1_SHOWUPSTREAM="auto"
+        export CLICOLOR=1
+        export LSCOLORS=gxBxhxDxfxhxhxhxhxcxcx
+        source ~/.git-prompt.sh
+        PS1='\[\033[32m\]\u@\h\[\033[00m\]:\[\e[0;33m\]\W\[\033[1;31m\]$(__git_ps1)\[\033[00m\]\$ '
+        source `which activate.sh`
+
+  - name: Change file permissions - private key
+    file:
+      path: "{{ homedir }}/.ssh/id_rsa"
+      mode: 0600
+
+  - name: Git - Checkout "Python"
+    git:
+      repo: "{{ git_repo }}"
+      dest: "{{ py3dir }}/python"
+      clone: yes
+      accept_hostkey: yes

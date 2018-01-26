@@ -1,0 +1,23 @@
+---
+Packages:
+  Python3:
+    CentOS: python34
+    Ubuntu: python3
+  Python3_pip:
+    CentOS: python34-pip
+    Ubuntu: python3-pip
+  Python3_virtualenv:
+    CentOS: python34-virtualenv
+    Ubuntu: python3-venv
+  Python2_pip:
+    CentOS: python2-pip
+    Ubuntu: python-pip
+  Perl-Digest-SHA:
+    CentOS: perl-Digest-SHA
+    Ubuntu: libdigest-sha-perl
+
+
+Services:
+
+
+Paths:
